@@ -1,0 +1,324 @@
+---
+title: "Analysis of Health Survey Data and Supplement Use"
+author: "Hisham A. Harmali" 
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true 
+    toc_float: true 
+    theme: journal 
+    code_folding: hide 
+---
+
+```{r setup, include=FALSE}
+# Setup chunk: runs first, options apply globally
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE) # echo=TRUE shows code, message/warning=FALSE hides messages
+
+# Load necessary libraries
+library(tidyverse)
+library(readr)
+library(readxl) 
+# library(knitr) # For kable() tables - uncomment if using kable() below
+# library(kableExtra) # For kable_styling() - uncomment if using
+```
+
+## 1. Introduction
+
+This report presents a statistical analysis conducted as part of a graduation research project focused on understanding health behaviors. The primary objective was to explore factors potentially associated with dietary supplement use among the surveyed participants, using the cleaned dataset data_c. Key variables examined included demographics (age, gender, education, income), health indicators (BMI), and lifestyle choices (smoking status). All data preparation, analysis, and visualization were performed using the R programming language and associated packages (primarily the tidyverse). The data analysis component of this team-based research project was conducted solely by Hisham A. Harmali. This document serves as a showcase of these analytical steps and findings.
+
+## 2. Data Loading and Preparation
+
+The analysis uses the pre-cleaned dataset from an Excel file. Key preparation steps performed within this document include renaming columns, converting `Income` to numeric, and setting categorical variables as factors.
+
+In accordance with ethical guidelines and to protect participant privacy, the underlying dataset (data_c) is not included in this public repository. Please refer to the Data Description section for details on the variables analyzed.
+
+### 2.1 Load Data
+
+```{r load-data}
+# Load the CLEANED data file from its saved location
+# data_c.xlsx is in a 'data' subfolder: "data/data_c.xlsx"
+
+data_c_raw <- read_excel("data/data_c.xlsx") # Load into a temporary raw object first
+
+# Basic check after loading
+if (is.null(data_c_raw)) {
+   stop("Error: Failed to load data_c from the specified Excel file. Check the path.")
+} else {
+  print("Raw data loaded successfully from Excel.")
+}
+```
+
+### 2.2 Rename Columns
+
+The original column names contained spaces, special characters, and colons. They are renamed here for easier use in R code.
+
+```{r rename-columns}
+# Rename columns (using the structure identified previously)
+data_c <- data_c_raw %>% # Start with the raw loaded data
+  rename(
+    # New Name = `Old Name (exactly as in original file)`
+    # --- Names WITH colon ---
+    Age                = `Age:`,
+    Gender             = `Gender:`,
+    Weight_kg          = `Weight(kg):`,
+    Height_cm          = `Height(cm):`,
+    BMI                = `BMI:`,
+    BMICategory_orig   = `Category of BMI:`,
+    Education_level    = `Education level:`,
+    Income             = `Income:`, 
+    Smoking_Status     = `Smoking:`,
+    Gym_Reason         = `The reason for going to the gym:`,
+    Gym_Time           = `Time at the gym (per day):`,
+    Exercise_Type      = `Type of exercise:`,
+    Injury_Reasons_POV = `From your point of view, what are the reasons of injury at the gym:`,
+    Gym_Injury_History = `Have you ever experienced injury or pain in the gym:`,
+
+    # --- Names WITHOUT colon ---
+    Supplement_Use     = `Are you currently using any supplements?`, 
+    Supplement_Duration = `How long have supplements been used?`,
+    Supplement_InfoSource = `What are your sources of information about supplements?`,
+    Supplement_Types_Taken = `What supplements do you specifically take?`,
+    Supplement_Reason  = `What is the main reason for using supplements?`,
+    Supplement_Frequency = `How often do you take supplements?`,
+    Supplement_InfluenceFactors = `What factors influence your decision to buy supplements?`,
+    Supplement_PurchasePlace = `Where do you prefer to buy supplements?`,
+    Supplement_MotivationNew = `What motivates you to try a new supplement?`
+  )
+
+# Check the new names
+print("Cleaned column names:")
+print(colnames(data_c))
+```
+
+### 2.3 Convert Data Types
+
+Convert `Income` to numeric and key categorical variables to factors. Create `GoesToGym` variable.
+
+```{r convert-types}
+# Convert data types
+data_c <- data_c %>%
+  mutate(
+    # Convert Income to numeric
+    Income = parse_number(as.character(Income)),
+
+    # Create GoesToGym variable based on Gym_Reason
+    GoesToGym = factor(ifelse(!is.na(Gym_Reason) & Gym_Reason != "", "Yes", "No")),
+
+    # Convert key categorical variables to factors
+    Gender = as.factor(Gender),
+    Education_level = as.factor(Education_level),
+    Smoking_Status = as.factor(Smoking_Status),
+    Supplement_Use = as.factor(Supplement_Use), # Ensure levels are No, Yes etc.
+    BMICategory_orig = as.factor(BMICategory_orig)
+    # Add any other factor conversions if needed
+  )
+
+# Verify the final structure
+print("Final structure of prepared data_c:")
+str(data_c)
+
+# Check the levels created for GoesToGym (Expected: Only "Yes")
+print("Check levels for GoesToGym:")
+print(table(data_c$GoesToGym))
+```
+The data_c dataframe is now prepared with clean names and appropriate data types. Income is numeric, and key categorical variables are factors. The GoesToGym variable confirmed all participants provided a gym reason and will be excluded from regression modeling.
+
+## 3. Descriptive Statistics
+
+Summarizing the key characteristics of the sample (N=`r nrow(data_c)`).
+
+### 3.1 Numeric Variables
+
+```{r descriptive-numeric}
+# Calculate numeric summaries
+numeric_summary <- data_c %>%
+  summarise(across(c(Age, Weight_kg, Height_cm, BMI, Income),
+                   list(
+                     N = ~sum(!is.na(.x)),
+                     Mean = ~mean(.x, na.rm = TRUE),
+                     Median = ~median(.x, na.rm = TRUE),
+                     SD = ~sd(.x, na.rm = TRUE),
+                     Min = ~min(.x, na.rm = TRUE),
+                     Max = ~max(.x, na.rm = TRUE)
+                   ),
+                   .names = "{.col}_{.fn}"))
+
+# Display the table
+print("Numeric Variable Summaries:")
+# knitr::kable(numeric_summary, caption = "Summary Statistics for Numeric Variables", digits = 1) # Nicer table option
+print(numeric_summary)
+```
+The analysis included 321 participants. The average age was 27.4 years (SD = 7.77), with a median of 25 years and ages ranging from 18 to 52. On average, participants weighed 68.7 kg (SD = 16.30; Median = 67.0; Range = 26-139) and had a height of 166.9 cm (SD = 8.57; Median = 169; Range = 143-198). The mean Body Mass Index (BMI) was 24.6 (SD = 5.13; Median = 24.0), falling near the upper end of the 'Normal' weight category on average, although individual values ranged widely from 10.2 to 47.0. The reported income, treated as numeric, had a mean of approximately 4993 SAR (SD = 4899) but a median of only 3000 SAR (Range = 0-20000), suggesting a right-skewed distribution with considerable variation.
+
+### 3.2 Categorical Variables
+
+```{r descriptive-categorical-setup, include=FALSE}
+# Define the helper function again
+summarize_categorical <- function(data, var_name) {
+  col_sym <- rlang::sym(var_name)
+  summary_table <- data %>%
+    filter(!is.na(!!col_sym)) %>%
+    count(!!col_sym, name = "Count") %>%
+    mutate(Percentage = round((Count / sum(Count)) * 100, 1))
+  print(paste("Summary for:", var_name))
+  # print(knitr::kable(summary_table, caption = paste("Summary for", var_name))) # Nicer table option
+  print(summary_table)
+  cat("\n")
+}
+```
+
+```{r descriptive-categorical-run}
+# Run summaries for categorical variables
+print("Categorical Variable Summaries:")
+summarize_categorical(data_c, "Gender")
+summarize_categorical(data_c, "Education_level")
+summarize_categorical(data_c, "Smoking_Status")
+summarize_categorical(data_c, "Supplement_Use")
+summarize_categorical(data_c, "BMICategory_orig")
+```
+Summaries for key categorical variables revealed the sample composition. The participants were predominantly Male (76.3%). The most common education level was a Bachelor’s degree (51.7%), followed by High School (25.5%) and Diploma (22.1%); Master’s and Middle School levels were rare in this sample (N=1 each). A large majority of participants reported being non-smokers (87.9%). Regarding the primary outcome variable, slightly more participants reported using supplements (55.8%) than not (44.2%). Based on the original BMI categorization provided in the data, about half the sample was classified as ‘Normal’ weight (50.8%), with ‘Overweight’ (25.9%) being the next largest group.
+
+## 4. Bivariate Analysis: Exploring Relationships
+
+Testing for statistically significant relationships between pairs of variables (alpha = 0.05).
+
+### 4.1 Categorical Associations (Chi-Square)
+
+```{r bivariate-chisq}
+# Gender vs. Supplement Use
+print("Test: Gender vs Supplement Use")
+chisq_gender_supp <- chisq.test(table(data_c$Gender, data_c$Supplement_Use))
+print(chisq_gender_supp)
+cat("\n")
+
+# Smoking Status vs. Supplement Use
+print("Test: Smoking Status vs Supplement Use")
+chisq_smoke_supp <- chisq.test(table(data_c$Smoking_Status, data_c$Supplement_Use))
+print(chisq_smoke_supp)
+cat("\n")
+```
+Based on the Chi-square test results that will be printed above  there is no statistically significant association was found between Gender and Supplement Use (p = 0.276). Similarly, there was no significant association found between Smoking Status and Supplement Use (p = 0.932).
+
+### 4.2 Mean BMI Comparisons (T-test & ANOVA)
+
+```{r bivariate-ttest}
+# BMI vs Supplement Use
+print("Test: BMI by Supplement Use (T-test)")
+t_test_bmi_supp <- t.test(BMI ~ Supplement_Use, data = data_c)
+print(t_test_bmi_supp)
+cat("\n")
+```
+The Welch Two Sample t-test indicated a statistically significant difference in mean BMI between supplement users (M ≈ 24.0) and non-users (M ≈ 25.2) (t(274.6) ≈ 2.06, p = 0.040). Participants who did not use supplements had a significantly higher average BMI than those who did in this sample.
+
+```{r bivariate-anova}
+# BMI vs Education Level
+print("Test: BMI by Education Level (ANOVA)")
+anova_bmi_edu <- aov(BMI ~ Education_level, data = data_c)
+print(summary(anova_bmi_edu))
+cat("\n")
+# Note: Post-hoc test not needed if overall ANOVA is not significant 
+```
+The ANOVA test showed no statistically significant difference in mean BMI across the different education levels (F(4, 316) = 0.90, p = 0.464). Therefore, post-hoc tests comparing specific groups were not performed. Note should be taken of the very small sample sizes (N=1) for the Master’s and Middle School categories when considering this result.
+
+### 4.3 Numeric Correlation (BMI vs Income)
+
+```{r bivariate-corr}
+# BMI vs Income
+print("Test: BMI vs Income (Correlation)")
+cor_test_bmi_income <- cor.test(~ BMI + Income, data = data_c, use = "complete.obs")
+print(cor_test_bmi_income)
+cat("\n")
+```
+A Pearson correlation test was conducted to examine the linear relationship between BMI and Income (both treated as numeric). The results showed a statistically significant, weak positive correlation between the two variables (r = 0.24, p < 0.001). This suggests that as income increases, BMI tends to increase slightly as well within this sample, although the relationship is not very strong.
+
+## 5. Predictive Modeling: Logistic Regression
+
+Building a model to predict Supplement Use based on multiple factors simultaneously. `GoesToGym` was excluded due to lack of variation.
+
+```{r modeling-logistic}
+# Build the logistic regression model
+# Ensure factor levels are appropriate, e.g., Supplement_Use is No then Yes
+# levels(data_c$Supplement_Use) # Check levels if needed
+# data_c$Supplement_Use <- factor(data_c$Supplement_Use, levels = c("No", "Yes")) # Relevel if needed BEFORE glm
+
+logistic_model <- glm(Supplement_Use ~ Age + Gender + BMI + Income + Education_level + Smoking_Status,
+                      data = data_c,
+                      family = binomial(link = "logit"))
+
+# View the model summary
+print("Logistic Regression Model Summary:")
+# Consider using broom::tidy() and kable() for a publication-ready table
+# print(knitr::kable(broom::tidy(logistic_model), digits = 3))
+summary(logistic_model) # Base R output
+
+# Calculate Odds Ratios
+print("Odds Ratios:")
+# print(knitr::kable(data.frame(OR = exp(coef(logistic_model))), digits = 3))
+print(exp(coef(logistic_model)))
+
+# Optional: Confidence Intervals for Odds Ratios
+# print("Odds Ratios 95% Confidence Intervals:")
+# print(knitr::kable(exp(confint(logistic_model)), digits = 3)) # Requires MASS package potentially
+# print(exp(confint(logistic_model))) # Calculation can be slow & give warnings
+```
+A binary logistic regression model was fitted to predict the likelihood of Supplement Use based on age, gender, BMI, income, education level, and smoking status. The model summary indicated that, after controlling for other variables, only **BMI** was a statistically significant predictor (p = 0.016). The Odds Ratio (OR) for BMI was approximately 0.94 (95% CI [0.90, 0.99]), suggesting that for each one-unit increase in BMI, the odds of using supplements decrease by about 6%. Age, gender, income, education level*, and smoking status were not found to be significant predictors in this model. (*Note: Results for the 'Master' and 'Middle School' education levels should be interpreted with extreme caution due to having only one participant in each group, which leads to unstable estimates).
+
+## 6. Visualizations
+
+Generating plots to visualize distributions and relationships.
+
+```{r visualizations, fig.width=8, fig.height=6, echo=FALSE} 
+# echo=FALSE hides the ggplot code itself in the final report, just shows plots
+# Remove echo=FALSE if you want to show the plotting code
+
+# Histograms
+plot_hist_age <- ggplot(data_c, aes(x = Age)) + geom_histogram(binwidth = 5, fill = "cornflowerblue", color = "black", na.rm=TRUE) + labs(title = "Distribution of Age") + theme_minimal()
+print(plot_hist_age)
+
+plot_hist_bmi <- ggplot(data_c, aes(x = BMI)) + geom_histogram(binwidth = 2, fill = "lightcoral", color = "black", na.rm=TRUE) + labs(title = "Distribution of BMI") + theme_minimal()
+print(plot_hist_bmi)
+
+plot_hist_income <- ggplot(data_c, aes(x = Income)) + geom_histogram(binwidth = 1000, fill = "lightgreen", color = "black", na.rm=TRUE) + labs(title = "Distribution of Income") + theme_minimal()
+print(plot_hist_income)
+
+# Bar Charts
+plot_bar_gender <- ggplot(data_c %>% filter(!is.na(Gender)), aes(x = Gender, fill = Gender)) + geom_bar() + labs(title = "Gender Distribution") + theme_minimal()
+print(plot_bar_gender)
+
+plot_bar_edu <- ggplot(data_c %>% filter(!is.na(Education_level)), aes(x = fct_infreq(Education_level), fill = Education_level)) + geom_bar() + labs(title = "Education Level Distribution", x = "Education Level") + theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(plot_bar_edu)
+
+plot_bar_smoking <- ggplot(data_c %>% filter(!is.na(Smoking_Status)), aes(x = Smoking_Status, fill = Smoking_Status)) + geom_bar() + labs(title = "Smoking Status Distribution") + theme_minimal()
+print(plot_bar_smoking)
+
+plot_bar_supp <- ggplot(data_c %>% filter(!is.na(Supplement_Use)), aes(x = Supplement_Use, fill = Supplement_Use)) + geom_bar() + labs(title = "Supplement Use Distribution", x="Uses Supplements?") + theme_minimal()
+print(plot_bar_supp)
+
+plot_bar_bmicat <- ggplot(data_c %>% filter(!is.na(BMICategory_orig)), aes(x = fct_infreq(BMICategory_orig), fill = BMICategory_orig)) + geom_bar() + labs(title = "BMI Category Distribution", x = "BMI Category") + theme_minimal()
+print(plot_bar_bmicat)
+
+# Box Plots
+plot_box_bmi_supp <- ggplot(data_c, aes(x = Supplement_Use, y = BMI, fill = Supplement_Use)) + geom_boxplot(na.rm = TRUE) + labs(title = "Comparison of BMI by Supplement Use", x = "Uses Supplements?") + theme_minimal() + theme(legend.position = "none")
+print(plot_box_bmi_supp)
+
+plot_box_bmi_gender <- ggplot(data_c, aes(x = Gender, y = BMI, fill = Gender)) + geom_boxplot(na.rm = TRUE) + labs(title = "Comparison of BMI by Gender") + theme_minimal() + theme(legend.position = "none")
+print(plot_box_bmi_gender)
+
+```
+Figures 1-3 present histograms for the numeric variables Age, BMI, and Income, respectively, illustrating their distributions; Income, in particular, shows a strong right skew. Figures 4-8 display bar charts for the primary categorical variables: Gender distribution (Fig 4), Education levels (Fig 5), Smoking status (Fig 6), Supplement use prevalence (Fig 7), and the distribution across BMI categories (Fig 8). Finally, Figures 9 and 10 use box plots to compare BMI distributions between groups. Figure 9 visually supports the statistically significant difference in BMI observed between supplement users and non-users, while Figure 10 compares BMI distributions between males and females.
+
+## 7. Conclusion
+
+This analysis aimed to identify factors associated with dietary supplement use among participants surveyed for a graduation research project. The key finding across multiple analyses was a significant inverse relationship between Body Mass Index (BMI) and supplement use. Both bivariate analysis (t-test, p=0.040) and multivariate logistic regression (p=0.016, OR≈0.94) indicated that individuals with lower BMI had significantly higher odds of using supplements compared to those with higher BMI. Additionally, after data cleaning, a weak but statistically significant positive correlation was observed between Income and BMI (r=0.24, p<0.001). Other factors investigated, including age, gender, education level, and smoking status, were not found to be significant predictors of supplement use in the final logistic regression model when controlling for other variables.
+
+Limitations of this study should be noted. The findings rely on self-reported survey data. The sample consisted only of individuals who reported a reason for attending the gym, potentially limiting generalizability to non-gym-goers. Furthermore, very small sample sizes for the Master’s and Middle School education levels affected the stability and interpretability of results related to those specific categories in the regression model. The findings may also be specific to the population surveyed [Optional: Add specific context here, e.g., “at Jazan University” or “in this region of Saudi Arabia”] and might not generalize to broader populations without further research.
+
+In conclusion, within this sample, BMI appears to be the most prominent factor differentiating supplement users from non-users, with lower BMI individuals being more likely to use supplements.
+
+## 8. Session Information
+
+*This section documents the R environment used for reproducibility.*
+```{r session-info}
+sessionInfo()
+```
+`
